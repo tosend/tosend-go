@@ -150,14 +150,48 @@ if err != nil {
     log.Fatal(err)
 }
 
-fmt.Println("Account:", info.Account.Title)
-fmt.Println("Emails this month:", info.Account.EmailsUsageThisMonth)
-fmt.Println("Emails last 24hrs:", info.Account.EmailsSentLast24Hrs)
+fmt.Println("Account:", info.Account.ID, info.Account.Status)
+if info.Account.CreditBalance != nil { // nil = no credit limit
+    fmt.Println("Credits:", *info.Account.CreditBalance)
+}
+fmt.Println("Rate limit:", info.Account.LimitPerSecond, "per second")
 
 for _, domain := range info.Domains {
     fmt.Printf("%s: %s\n", domain.DomainName, domain.VerificationStatus)
 }
 ```
+
+## Admin API
+
+`tosend.NewAdmin` returns a separate client for the [Admin API](https://tosend.com/docs/api/admin-api). It takes an admin key (`tsend_admin_...`) and returns an error for a sending key. Each call needs the matching [scope](https://tosend.com/docs/api/admin-api#scopes) on the key; a missing scope returns a `*tosend.Error` whose `Code()` is `"insufficient_scope"`.
+
+```go
+admin, err := tosend.NewAdmin(os.Getenv("TOSEND_ADMIN_KEY"))
+if err != nil {
+    log.Fatal(err)
+}
+
+// Act on one of your client teams (sends X-Account-Id)
+client := admin.ForAccount(4203)
+
+domain, err := client.CreateDomain("client.example.com")
+detail, err := client.GetDomain(domain.ID)
+fmt.Println(detail.DNSRecords.DKIM.Content) // show these records to your client
+
+// Needs api_keys:write and emails:send
+key, err := client.CreateSendingKey("Client: Acme Corp", "")
+fmt.Println(key.APIKey) // returned once, store it now
+
+// Needs emails:send
+_, err = client.Send(&tosend.SendEmailRequest{
+    From:    tosend.Address{Email: "hello@client.example.com"},
+    To:      []tosend.Address{{Email: "user@example.com"}},
+    Subject: "Hi",
+    HTML:    "<p>Hello</p>",
+})
+```
+
+Also available: `GetInfo`, `ListDomains`, `DeleteDomain`, `ListEmails`, `GetEmail`, `ListSuppressions`, `DeleteSuppression`, `ListWebhooks`, `CreateWebhook`, `UpdateWebhook`, `DeleteWebhook`, `ListSendingKeys`, `DeleteSendingKey`, `ListTeams`, `CreateTeam`, `UpdateTeam` and `Batch`. List methods take paging parameters and return a `*tosend.Page[T]` with `Data`, `Total`, `Page` and `PerPage`.
 
 ## Configuration
 
@@ -201,8 +235,9 @@ if err != nil {
     if apiErr, ok := err.(*tosend.Error); ok {
         fmt.Println("Error:", apiErr.Message)
         fmt.Println("Status:", apiErr.StatusCode)
-        fmt.Println("Type:", apiErr.ErrorType)
-        fmt.Println("Details:", apiErr.Errors)
+        fmt.Println("Type:", apiErr.ErrorType)   // empty for Admin API errors
+        fmt.Println("Details:", apiErr.Errors)    // map[string]any
+        fmt.Println("Code:", apiErr.Code())       // e.g. "insufficient_scope"
     } else {
         fmt.Println("Error:", err)
     }

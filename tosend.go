@@ -7,6 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -64,19 +66,39 @@ func New(apiKey string, opts ...Option) *Client {
 }
 
 // Error represents an API error response.
+//
+// Errors carries field-level detail in either of the two shapes the API
+// returns: nested from the sending endpoints ({"subject": {"required": "..."}})
+// or flat from the Admin API ({"code": "insufficient_scope", "required_scope":
+// "domains:read"}). Admin API errors have no ErrorType.
 type Error struct {
-	StatusCode int                          `json:"status_code"`
-	ErrorType  string                       `json:"error_type"`
-	Message    string                       `json:"message"`
-	Errors     map[string]map[string]string `json:"errors,omitempty"`
+	StatusCode int            `json:"status_code"`
+	ErrorType  string         `json:"error_type,omitempty"`
+	Message    string         `json:"message"`
+	Errors     map[string]any `json:"errors,omitempty"`
 }
 
 func (e *Error) Error() string {
+	if e.ErrorType == "" {
+		return fmt.Sprintf("tosend: %s (status: %d)", e.Message, e.StatusCode)
+	}
 	return fmt.Sprintf("tosend: %s (status: %d, type: %s)", e.Message, e.StatusCode, e.ErrorType)
+}
+
+// Code returns the machine-readable code in Errors (for example
+// "insufficient_scope" or "suspended_by_platform"), or "" when there is none.
+func (e *Error) Code() string {
+	code, _ := e.Errors["code"].(string)
+	return code
 }
 
 // request makes an HTTP request to the API.
 func (c *Client) request(method, path string, body interface{}, result interface{}) error {
+	return c.do(method, path, nil, nil, body, result)
+}
+
+// do makes an HTTP request with optional query parameters and extra headers.
+func (c *Client) do(method, path string, query url.Values, headers map[string]string, body interface{}, result interface{}) error {
 	var reqBody io.Reader
 	if body != nil {
 		jsonBody, err := json.Marshal(body)
@@ -86,7 +108,12 @@ func (c *Client) request(method, path string, body interface{}, result interface
 		reqBody = bytes.NewReader(jsonBody)
 	}
 
-	req, err := http.NewRequest(method, c.baseURL+path, reqBody)
+	target := c.baseURL + path
+	if len(query) > 0 {
+		target += "?" + query.Encode()
+	}
+
+	req, err := http.NewRequest(method, target, reqBody)
 	if err != nil {
 		return fmt.Errorf("tosend: failed to create request: %w", err)
 	}
@@ -94,6 +121,9 @@ func (c *Client) request(method, path string, body interface{}, result interface
 	req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
+	for name, value := range headers {
+		req.Header.Set(name, value)
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
@@ -108,12 +138,15 @@ func (c *Client) request(method, path string, body interface{}, result interface
 
 	if resp.StatusCode >= 400 {
 		var apiErr Error
-		if err := json.Unmarshal(respBody, &apiErr); err != nil {
-			return &Error{
-				StatusCode: resp.StatusCode,
-				ErrorType:  "unknown_error",
-				Message:    string(respBody),
+		if err := json.Unmarshal(respBody, &apiErr); err != nil || apiErr.Message == "" {
+			message := strings.TrimSpace(string(respBody))
+			if message == "" {
+				message = http.StatusText(resp.StatusCode)
 			}
+			apiErr = Error{ErrorType: "unknown_error", Message: message}
+		}
+		if apiErr.StatusCode == 0 {
+			apiErr.StatusCode = resp.StatusCode
 		}
 		return &apiErr
 	}

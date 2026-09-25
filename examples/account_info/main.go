@@ -28,11 +28,16 @@ func main() {
 
 	fmt.Println("=== Account Information ===")
 	fmt.Println()
-	fmt.Printf("Account:     %s\n", info.Account.Title)
+	fmt.Printf("Account ID:  %d\n", info.Account.ID)
 	fmt.Printf("Plan:        %s\n", info.Account.PlanType)
 	fmt.Printf("Status:      %s\n", info.Account.Status)
-	fmt.Printf("Emails (24h): %d\n", info.Account.EmailsSentLast24Hrs)
-	fmt.Printf("Emails (mo): %d\n", info.Account.EmailsUsageThisMonth)
+	if info.Account.CreditBalance != nil {
+		fmt.Printf("Credits:     %d\n", *info.Account.CreditBalance)
+	} else {
+		fmt.Println("Credits:     unlimited")
+	}
+	fmt.Printf("Rate limit:  %d/sec\n", info.Account.LimitPerSecond)
+	fmt.Printf("Bounce rate: %.2f%%\n", info.Account.BounceRate*100)
 	fmt.Println()
 
 	fmt.Println("=== Domains ===")

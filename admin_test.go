@@ -2,6 +2,7 @@ package tosend
 
 import (
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -9,14 +10,16 @@ import (
 )
 
 type captured struct {
-	method, path, escapedPath, rawQuery, accountID, auth string
-	query                                                map[string][]string
+	method, path, escapedPath, rawQuery, accountID, auth, body string
+	query                                                      map[string][]string
 }
 
 func server(t *testing.T, status int, body string, got *captured) *httptest.Server {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		raw, _ := io.ReadAll(r.Body)
 		*got = captured{
+			body:        string(raw),
 			method:      r.Method,
 			path:        r.URL.Path,
 			escapedPath: r.URL.EscapedPath(),
@@ -237,5 +240,39 @@ func TestBatchResultFlatErrors(t *testing.T) {
 	}
 	if resp.Results[0].StatusCode != 422 || resp.Results[0].Errors["to"] == nil || resp.Results[1].MessageID != "m1" {
 		t.Fatalf("decoded wrong: %+v", resp.Results)
+	}
+}
+
+func TestCreateTeamInRegionSendsRegion(t *testing.T) {
+	var got captured
+	srv := server(t, 201, `{"data":{"id":8,"name":"Clients EU","status":"active","ses_region":"eu-central-1"}}`, &got)
+
+	team, err := admin(t, srv.URL).CreateTeamInRegion("Clients EU", RegionEU)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.method != "POST" || got.path != "/v2/teams" || got.body != `{"name":"Clients EU","ses_region":"eu-central-1"}` {
+		t.Fatalf("request = %s %s %s", got.method, got.path, got.body)
+	}
+	if team.SesRegion != "eu-central-1" {
+		t.Fatalf("SesRegion = %q", team.SesRegion)
+	}
+
+	if _, err := admin(t, srv.URL).CreateTeam("Clients"); err != nil {
+		t.Fatal(err)
+	}
+	if got.body != `{"name":"Clients"}` {
+		t.Fatalf("CreateTeam body = %s", got.body)
+	}
+}
+
+func TestAttachmentContentIDOmittedWhenEmpty(t *testing.T) {
+	inline, _ := json.Marshal(Attachment{Type: "image/png", Name: "logo.png", Content: "cG5n", ContentID: "logo@example.com"})
+	plain, _ := json.Marshal(Attachment{Type: "application/pdf", Name: "a.pdf", Content: "cGRm"})
+	if string(inline) != `{"type":"image/png","name":"logo.png","content":"cG5n","content_id":"logo@example.com"}` {
+		t.Fatalf("inline = %s", inline)
+	}
+	if string(plain) != `{"type":"application/pdf","name":"a.pdf","content":"cGRm"}` {
+		t.Fatalf("plain = %s", plain)
 	}
 }

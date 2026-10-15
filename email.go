@@ -13,6 +13,9 @@ type Attachment struct {
 	Type    string `json:"type"`
 	Name    string `json:"name"`
 	Content string `json:"content"` // Base64 encoded
+	// ContentID embeds the file inline: reference it in the HTML as
+	// cid:<ContentID>. Leave empty for a normal attachment.
+	ContentID string `json:"content_id,omitempty"`
 }
 
 // SendEmailRequest represents the request to send a single email.

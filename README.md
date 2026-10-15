@@ -113,6 +113,29 @@ resp, err := client.Send(&tosend.SendEmailRequest{
 })
 ```
 
+### Inline Images
+
+Set `ContentID` and reference it from the HTML with `cid:`:
+
+```go
+logo, _ := os.ReadFile("logo.png")
+
+resp, err := client.Send(&tosend.SendEmailRequest{
+    From:    tosend.Address{Email: "hello@yourdomain.com"},
+    To:      []tosend.Address{{Email: "user@example.com"}},
+    Subject: "Welcome",
+    HTML:    `<img src="cid:logo@yourdomain.com" alt="Logo">`,
+    Attachments: []tosend.Attachment{
+        {
+            Type:      "image/png",
+            Name:      "logo.png",
+            Content:   base64.StdEncoding.EncodeToString(logo),
+            ContentID: "logo@yourdomain.com",
+        },
+    },
+})
+```
+
 ### Batch Sending
 
 Send multiple emails in a single request:
@@ -191,7 +214,7 @@ _, err = client.Send(&tosend.SendEmailRequest{
 })
 ```
 
-Also available: `GetInfo`, `ListDomains`, `DeleteDomain`, `ListEmails`, `GetEmail`, `ListSuppressions`, `DeleteSuppression`, `ListWebhooks`, `CreateWebhook`, `UpdateWebhook`, `DeleteWebhook`, `ListSendingKeys`, `DeleteSendingKey`, `ListTeams`, `CreateTeam`, `UpdateTeam` and `Batch`. List methods take paging parameters and return a `*tosend.Page[T]` with `Data`, `Total`, `Page` and `PerPage`.
+Also available: `GetInfo`, `ListDomains`, `DeleteDomain`, `ListEmails`, `GetEmail`, `ListSuppressions`, `DeleteSuppression`, `ListWebhooks`, `CreateWebhook`, `UpdateWebhook`, `DeleteWebhook`, `ListSendingKeys`, `DeleteSendingKey`, `ListTeams`, `CreateTeam`, `CreateTeamInRegion` (`CreateTeamInRegion("Acme", tosend.RegionEU)`; the region can't be changed later), `UpdateTeam` and `Batch`. List methods take paging parameters and return a `*tosend.Page[T]` with `Data`, `Total`, `Page` and `PerPage`.
 
 ## Configuration
 

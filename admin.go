@@ -516,7 +516,15 @@ type Team struct {
 	ID     int    `json:"id"`
 	Name   string `json:"name"`
 	Status string `json:"status"`
+	// SesRegion is where the team sends from (RegionUS or RegionEU).
+	SesRegion string `json:"ses_region,omitempty"`
 }
+
+// Sending regions for CreateTeamInRegion. A team's region is fixed for life.
+const (
+	RegionUS = "us-east-1"
+	RegionEU = "eu-central-1"
+)
 
 // TeamList is your account and its child teams.
 type TeamList struct {
@@ -551,6 +559,12 @@ func (a *AdminClient) ListTeams() (*TeamList, error) {
 // Needs teams:write.
 func (a *AdminClient) CreateTeam(name string) (*Team, error) {
 	return adminData[Team](a, "POST", "/v2/teams", nil, map[string]string{"name": name})
+}
+
+// CreateTeamInRegion is CreateTeam with a sending region (RegionUS or
+// RegionEU). The region cannot be changed once the team exists.
+func (a *AdminClient) CreateTeamInRegion(name, region string) (*Team, error) {
+	return adminData[Team](a, "POST", "/v2/teams", nil, map[string]string{"name": name, "ses_region": region})
 }
 
 // UpdateTeam renames a child team or changes its status. Needs teams:write.
